@@ -9,7 +9,7 @@ password = process.env.DB_PASS
 app.use(cors());
 
 app.get('/', async (req, res) => {
-    res.send(`Surver is ok`)
+  res.send(`Surver is ok`)
 })
 
 const { MongoClient, ServerApiVersion } = require('mongodb');
@@ -27,17 +27,23 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-      // await client.connect();
-      const database = client.db('bistroDb')
-      const menuCollection = database.collection('menu');
-      const reviewCollection = database.collection('reviews');
-      app.get('/menu', async (req, res) => {
-          const result = await menuCollection.find().toArray();
-          res.send(result)
+    // await client.connect();
+    const database = client.db('bistroDb')
+    const menuCollection = database.collection('menu');
+    const reviewCollection = database.collection('reviews');
+    const cartCollection = database.collection('carts');
+    app.get('/menu', async (req, res) => {
+      const result = await menuCollection.find().toArray();
+      res.send(result)
     })
-      app.get('/reviews', async (req, res) => {
-          const result = await reviewCollection.find().toArray();
-          res.send(result)
+    app.get('/reviews', async (req, res) => {
+      const result = await reviewCollection.find().toArray();
+      res.send(result)
+    })
+    app.post('/carts', async (req, res) => {
+      const cartItem = req.body;
+      const result = await cartCollection.insertOne(cartItem);
+      res.send(result)
     })
 
     // Send a ping to confirm a successful connection
@@ -51,5 +57,5 @@ async function run() {
 run().catch(console.dir);
 
 app.listen(port, () => {
-    console.log(`Server is running at http://localhost:${port}`)
+  console.log(`Server is running at http://localhost:${port}`)
 })
