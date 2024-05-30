@@ -1,11 +1,13 @@
 const express = require('express');
 const app = express();
 const cors = require('cors');
-
+const jwt = require('jsonwebtoken')
 require('dotenv').config()
 const port = process.env.PORT || 5000;
 username = process.env.DB_USER
 password = process.env.DB_PASS
+secret = process.env.SECRET_KYE
+// console.log(secret);
 app.use(cors({
 
 }));
@@ -28,6 +30,7 @@ const client = new MongoClient(uri, {
   }
 });
 
+
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -37,9 +40,66 @@ async function run() {
     const menuCollection = database.collection('menu');
     const reviewCollection = database.collection('reviews');
     const cartCollection = database.collection('carts');
+    // jwt related api
+    app.post('/jwt', async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, secret, {
+        expiresIn: '1h'
+      })
+      res.send({ token })
+    })
 
+    // middlewares
+    const verifyToken = (req, res, next) => {
+      // console.log(req.headers);
+      if (!req.headers.authorization) {
+        return res.status(401).send({ message: 'forbidden access' })
+      }
+      const token = req.headers.authorization.split(' ')[1]
+      // console.log("token", token);
+      if (!token) {
+        return res.status(401).send({ message: 'forbidden access' })
+      }
+      jwt.verify(token, secret, (err, decoded) => {
+        if (err) {
+          return res.status(403).send({ message: 'forbidden access' })
+        }
+        req.decoded = decoded;
+        next()
+      })
+
+    }
+
+    // use verify admin after verifyToken
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email
+      const query = { email: email }
+      const user = await usersCollection.findOne(query)
+      const isAdmin = user?.role === "Admin"
+      if (!isAdmin) {
+        return res.status(403).send({ message: 'Forbidden access' });
+
+      }
+      next()
+    }
     // users related api
-    app.post('/users', async (req, res) => {
+    app.get('/users', verifyToken, async (req, res) => {
+
+      const result = await usersCollection.find().toArray();
+      res.send(result)
+    })
+    app.get('/user/admin/:email', verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: 'UnAuthorized access' })
+      }
+      const query = { email: email }
+      const user = await usersCollection.findOne(query)
+      const admin = user?.role === "Admin"
+      console.log(admin);
+      res.send(admin)
+    })
+    app.post('/users', verifyToken, verifyAdmin, async (req, res) => {
       const user = req.body;
       const query = { email: user.email }
       const update = { $setOnInsert: user }
@@ -48,6 +108,25 @@ async function run() {
       const result = await usersCollection.updateOne(query, update, options);
       res.send(result)
     })
+    app.patch('/users/admin/:id', async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) }
+      const updatedUser = {
+        $set: {
+          role: "Admin"
+        }
+      }
+      const result = await usersCollection.updateOne(filter, updatedUser)
+      res.send(result)
+    })
+
+    app.delete('/users/:id', async (req, res) => {
+      const id = req.params.id
+      const query = { _id: new ObjectId(id) }
+      const result = await usersCollection.deleteOne(query)
+      res.send(result)
+    })
+    // menu related api
 
     app.get('/menu', async (req, res) => {
       const result = await menuCollection.find().toArray();
