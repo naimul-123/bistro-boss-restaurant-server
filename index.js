@@ -195,8 +195,78 @@ async function run() {
       const result = await cartCollection.deleteOne(query);
       res.send(result);
     })
+
+    // status or analytics 
+    app.get('/admin-stats', async (req, res) => {
+      const totalUsers = await usersCollection.estimatedDocumentCount();
+      const menuItems = await menuCollection.estimatedDocumentCount();
+      const totalOrders = await paymentCollection.estimatedDocumentCount();
+      const result = await paymentCollection.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: {
+              $sum: '$price'
+            }
+          }
+        },
+      ]).toArray();
+
+      const totalRevenue = result.length > 0 ? result[0].total : 0;
+      res.send({
+        totalUsers, menuItems, totalOrders, totalRevenue
+
+      })
+    })
+    app.get('/order-state', verifyToken, verifyAdmin, async (req, res) => {
+      const result = await paymentCollection.aggregate(
+        [
+
+          {
+            $addFields: {
+              menuItemsIdsObjectId: {
+                $map: {
+                  input: '$menuItemIds',
+                  as: 'id',
+                  in: { $toObjectId: "$$id" }
+                }
+              }
+            }
+          },
+          {
+            $lookup: {
+              from: 'menu',
+              localField: 'menuItemsIdsObjectId',
+              foreignField: '_id',
+              as: 'menuItems'
+
+            }
+          },
+          {
+            $unwind: '$menuItems'
+          },
+          {
+            $group: {
+              _id: '$menuItems.category',
+              revenue: { $sum: "$menuItems.price" },
+              quantity: { $sum: 1 }
+            }
+          },
+          {
+            $project: {
+              _id: 0,
+              category: '$_id',
+              quantity: '$quantity',
+              revenue: '$revenue'
+            }
+          }
+        ]
+      ).toArray();
+      res.send(result)
+    })
+
     // stripe api
-    app.post('/create-payment-intent', async (req, res) => {
+    app.post('/create-payment-intent', verifyToken, async (req, res) => {
       const { price } = req.body
       const amount = parseInt(price * 100)
       const paymentIntent = await stripe.paymentIntents.create({
@@ -233,8 +303,8 @@ async function run() {
       res.send({ paymentResult, deleteResult })
     })
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
